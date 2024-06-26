@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 
 const execAsync = util.promisify(exec);
-const MAX_AGE = 5 * 60 * 1000; // 5 minutes en millisecondes
+const MAX_AGE = 120 * 60 * 1000; // 5 minutes en millisecondes
 const UPLOADS_DIR = '/app/uploads';
 
 async function deleteOldVolumes() {

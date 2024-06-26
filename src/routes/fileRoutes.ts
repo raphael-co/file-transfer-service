@@ -1,12 +1,11 @@
 import { Router } from 'express';
-import { uploadFiles, downloadFiles, getFilesInformation } from '../controllers/fileController';
-import { assignUploadDir, upload, validateUploadData } from '../middleweares/uploadMiddleware';
+import { uploadDirectory, uploadFiles, completeUpload } from '../controllers/fileController';
+import { assignUploadDir, upload, validateCompleteUploadData, validateUploadData } from '../middleweares/uploadMiddleware';
 
 
-const router = Router();
+const uploads = Router();
 
-router.post('/upload', upload.array('files'), validateUploadData, assignUploadDir, uploadFiles);
-router.get('/files/download/:dir', downloadFiles);
-router.get('/files/:dir', getFilesInformation);
-
-export default router;
+uploads.post('/', upload.array('files'), validateUploadData, assignUploadDir, uploadDirectory);
+uploads.post('/upload-files', upload.array('files'), assignUploadDir, uploadFiles);
+uploads.post('/complete-upload', validateCompleteUploadData, completeUpload);
+export default uploads;

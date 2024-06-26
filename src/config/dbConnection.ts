@@ -20,7 +20,7 @@ console.log(process.env.HOST);
 // Function to get a connection from the pool
 async function getConnection() {
   const connection = await pool.getConnection();
-  console.log('Database bddStokage is connected successfully!');
+  console.log('Database Transfer Express is connected successfully!');
   // Release the connection back to the pool when done
   connection.release();
   return connection;

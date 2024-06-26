@@ -25,3 +25,16 @@ export const assignUploadDir = (req: Request, res: Response, next: NextFunction)
     next();
 };
 
+export const validateCompleteUploadData = (req: Request, res: Response, next: NextFunction) => {
+    const { uploadDir, emailAddresses } = req.body;
+
+    if (!uploadDir) {
+        return res.status(400).json({ status: 'error', message: 'Upload directory is required.' });
+    }
+
+    if (req.body.emailAddresses && (!emailAddresses || emailAddresses.length === 0)) {
+        return res.status(400).json({ status: 'error', message: 'Email addresses are required when delivery method is email.' });
+    }
+
+    next();
+};

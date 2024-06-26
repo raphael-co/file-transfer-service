@@ -6,6 +6,7 @@ import NodeClam from 'clamscan';
 import archiver from 'archiver';
 import { scanFiles } from '../services/fileService';
 import sendDownloadLinkEmail from '../services/emailService';
+import pool from '../config/dbConnection';
 
 const logDir = 'logs';
 
@@ -20,11 +21,32 @@ interface FileSystemEntry {
     children?: FileSystemEntry[];
 }
 
-export const uploadFiles = async (req: Request, res: Response) => {
+export const completeUpload = async (req: Request, res: Response) => {
+    const { uploadDir, emailAddresses } = req.body;
+
+    if (!uploadDir || !emailAddresses) {
+        return res.status(400).send({ status: 'error', message: 'Missing parameters.' });
+    }
+
+    try {
+        const uploadDirUrl = `${req.protocol}://${req.get('host')}/api/files/download/${uploadDir}`;
+        const emailAddressArray = emailAddresses.split(',');
+
+        await sendDownloadLinkEmail(emailAddressArray, uploadDirUrl);
+
+        res.status(200).send({ status: 'success', message: 'Emails sent successfully.' });
+    } catch (err) {
+        console.error('Error sending email:', err);
+        res.status(500).send({ status: 'error', message: 'Internal Server Error' });
+    }
+};
+
+export const uploadDirectory = async (req: Request, res: Response) => {
     if (!req.files || (req.files as Express.Multer.File[]).length === 0) {
         return res.status(400).send({ status: 'error', message: 'No files uploaded.' });
     }
 
+    const connection = await pool.getConnection();
     try {
         const files = req.files as Express.Multer.File[];
         const paths = req.body.paths.split(',');
@@ -56,53 +78,114 @@ export const uploadFiles = async (req: Request, res: Response) => {
 
         const uploadDirUrl = `${req.protocol}://${req.get('host')}/api/files/download/${req.uploadDir}`;
 
-        if (req.body.emailAddresses) {
-            const emailAddresses = req.body.emailAddresses.split(',');
+        await connection.query('INSERT INTO uploads (upload_dir, num_files) VALUES (?, ?)', [
+            req.uploadDir,
+            files.length
+        ]);
 
-            await sendDownloadLinkEmail(emailAddresses, uploadDirUrl);
-            console.log("after sendDownloadLinkEmail");
-        }
         res.status(200).send({ status: 'success', uploadDirUrl });
     } catch (err) {
         console.error('Error scanning files:', err);
         res.status(500).send({ status: 'error', message: 'Internal Server Error' });
+    } finally {
+        connection.release();
     }
 };
 
+export const uploadFiles = async (req: Request, res: Response) => {
+    if (!req.files || (req.files as Express.Multer.File[]).length === 0) {
+        return res.status(400).send({ status: 'error', message: 'No files uploaded.' });
+    }
 
-export const downloadFiles = (req: Request, res: Response) => {
-    const dirPath = path.join(__dirname, '../../uploads', req.params.dir);
-    console.log(`Starting to zip directory: ${dirPath}`);
+    const connection = await pool.getConnection();
+    try {
+        const files = req.files as Express.Multer.File[];
+        const uploadDir = `uploads/${req.uploadDir}`;
+        fs.mkdirSync(uploadDir, { recursive: true });
 
-    if (fs.existsSync(dirPath)) {
-        res.setHeader('Content-Type', 'application/zip');
-        res.setHeader('Content-Disposition', `attachment; filename=${req.params.dir}.zip`);
-
-        const archive = archiver('zip', {
-            zlib: { level: 9 }
+        const filePaths = files.map((file) => {
+            const filePath = path.join(uploadDir, file.originalname);
+            fs.writeFileSync(filePath, file.buffer);
+            return filePath;
         });
 
-        archive.on('error', (err) => {
-            throw err;
-        });
+        const fileScanResults = await scanFiles(filePaths);
+        const infectedFiles = fileScanResults.filter(result => result.isInfected);
 
-        archive.on('progress', (progress) => {
-            console.log(`Zipping progress: ${progress.entries.processed} files processed`);
-        });
+        if (infectedFiles.length > 0) {
+            return res.status(400).send({ status: 'error', message: 'Some files are infected.' });
+        }
 
-        archive.pipe(res);
+        const uploadDirUrl = `${req.protocol}://${req.get('host')}/api/files/download/${req.uploadDir}`;
 
-        const startTime = Date.now();
-        archive.directory(dirPath, false).finalize().then(() => {
-            const endTime = Date.now();
-            console.log(`Zipping completed in ${endTime - startTime}ms`);
-        }).catch(err => {
-            console.error('Error during zipping:', err);
-        });
-    } else {
-        res.status(404).send({ status: 'error', message: 'Directory not found.' });
+        await connection.query('INSERT INTO uploads (upload_dir, num_files) VALUES (?, ?)', [
+            req.uploadDir,
+            files.length
+        ]);
+
+        res.status(200).send({ status: 'success', uploadDirUrl });
+    } catch (err) {
+        console.error('Error scanning files:', err);
+        res.status(500).send({ status: 'error', message: 'Internal Server Error' });
+    } finally {
+        connection.release();
     }
 };
+
+const countFilesInDirectory = (dirPath: string): number => {
+    let fileCount = 0;
+    const files = fs.readdirSync(dirPath);
+
+    files.forEach(file => {
+        const filePath = path.join(dirPath, file);
+        const fileStats = fs.statSync(filePath);
+        if (fileStats.isDirectory()) {
+            fileCount += countFilesInDirectory(filePath);
+        } else {
+            fileCount += 1;
+        }
+    });
+
+    return fileCount;
+};
+
+export const downloadFiles = async (req: Request, res: Response) => {
+    const connection = await pool.getConnection();
+    try {
+        const dirPath = path.join(__dirname, '../../uploads', req.params.dir);
+        if (fs.existsSync(dirPath)) {
+            res.setHeader('Content-Type', 'application/zip');
+            res.setHeader('Content-Disposition', `attachment; filename=${req.params.dir}.zip`);
+
+            const archive = archiver('zip', {
+                zlib: { level: 9 }
+            });
+
+            archive.on('error', (err) => {
+                throw err;
+            });
+
+            archive.pipe(res);
+            archive.directory(dirPath, false);
+            archive.finalize();
+
+            const numberOfFiles = countFilesInDirectory(dirPath);
+
+            await connection.query('INSERT INTO downloads (download_dir, num_files) VALUES (?, ?)', [
+                req.params.dir,
+                numberOfFiles
+            ]);
+        } else {
+            res.status(404).send({ status: 'error', message: 'Directory not found, directory may have been deleted or expired.' });
+        }
+    } catch (err) {
+        console.error('Error logging download:', err);
+        res.status(500).send({ status: 'error', message: 'Internal Server Error' });
+    } finally {
+        connection.release();
+    }
+};
+
 const getAllFiles = (dirPath: string, arrayOfFiles: FileSystemEntry[] = []): FileSystemEntry[] => {
     const files = fs.readdirSync(dirPath);
 

@@ -13,7 +13,7 @@ export const validateUploadData = (req: Request, res: Response, next: NextFuncti
     console.log(emailAddresses);
     console.log(paths);
 
-    if ( !paths) {
+    if (!paths) {
         return res.status(400).json({ status: 'error', message: 'paths are required.' });
     }
 
@@ -21,6 +21,7 @@ export const validateUploadData = (req: Request, res: Response, next: NextFuncti
 };
 
 export const assignUploadDir = (req: Request, res: Response, next: NextFunction) => {
-    req.uploadDir = uuidv4();
+    req.uploadDir = req.body.uploadDir || uuidv4();
     next();
 };
+

@@ -62,15 +62,18 @@ export const uploadFiles = async (req: Request, res: Response) => {
             await sendDownloadLinkEmail(emailAddresses, uploadDirUrl);
             console.log("after sendDownloadLinkEmail");
         }
-        res.status(200).send({ status: 'success', message: uploadDirUrl });
+        res.status(200).send({ status: 'success', uploadDirUrl });
     } catch (err) {
         console.error('Error scanning files:', err);
         res.status(500).send({ status: 'error', message: 'Internal Server Error' });
     }
 };
 
+
 export const downloadFiles = (req: Request, res: Response) => {
     const dirPath = path.join(__dirname, '../../uploads', req.params.dir);
+    console.log(`Starting to zip directory: ${dirPath}`);
+
     if (fs.existsSync(dirPath)) {
         res.setHeader('Content-Type', 'application/zip');
         res.setHeader('Content-Disposition', `attachment; filename=${req.params.dir}.zip`);
@@ -83,14 +86,23 @@ export const downloadFiles = (req: Request, res: Response) => {
             throw err;
         });
 
+        archive.on('progress', (progress) => {
+            console.log(`Zipping progress: ${progress.entries.processed} files processed`);
+        });
+
         archive.pipe(res);
-        archive.directory(dirPath, false);
-        archive.finalize();
+
+        const startTime = Date.now();
+        archive.directory(dirPath, false).finalize().then(() => {
+            const endTime = Date.now();
+            console.log(`Zipping completed in ${endTime - startTime}ms`);
+        }).catch(err => {
+            console.error('Error during zipping:', err);
+        });
     } else {
         res.status(404).send({ status: 'error', message: 'Directory not found.' });
     }
 };
-
 const getAllFiles = (dirPath: string, arrayOfFiles: FileSystemEntry[] = []): FileSystemEntry[] => {
     const files = fs.readdirSync(dirPath);
 

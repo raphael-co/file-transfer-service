@@ -256,6 +256,6 @@ export const getFilesInformation = (req: Request, res: Response) => {
             files: allFiles
         });
     } else {
-        res.status(404).send({ status: 'error', message: 'Directory not found.' });
+        res.status(404).send({ status: 'error', message: 'Directory not found, directory may have been deleted or expired.' });
     }
 };

@@ -7,6 +7,7 @@ import archiver from 'archiver';
 import { scanFiles } from '../services/fileService';
 import sendDownloadLinkEmail from '../services/emailService';
 import pool from '../config/dbConnection';
+import { exec } from 'child_process';
 
 const logDir = 'logs';
 
@@ -257,5 +258,98 @@ export const getFilesInformation = (req: Request, res: Response) => {
         });
     } else {
         res.status(404).send({ status: 'error', message: 'Directory not found, directory may have been deleted or expired.' });
+    }
+};
+
+const calculateDirectorySize = (dirPath: string): number => {
+    let totalSize = 0;
+
+    const files = fs.readdirSync(dirPath);
+    files.forEach(file => {
+        const filePath = path.join(dirPath, file);
+        const fileStats = fs.statSync(filePath);
+
+        if (fileStats.isDirectory()) {
+            totalSize += calculateDirectorySize(filePath);
+        } else {
+            totalSize += fileStats.size;
+        }
+    });
+
+    return totalSize;
+};
+
+export const getUsedSpace = (req: Request, res: Response) => {
+    const dirPath = path.join(__dirname, '../../uploads');
+    if (fs.existsSync(dirPath)) {
+        const totalSize = calculateDirectorySize(dirPath);
+        res.status(200).send({
+            status: 'success',
+            usedSpace: formatSizeUnits(totalSize)
+        });
+    } else {
+        res.status(404).send({
+            status: 'error',
+            message: 'Upload directory not found.'
+        });
+    }
+};
+
+// Middleware to check if there is enough space in the upload directory
+export const checkAvailableSpace = (req: Request, res: Response, next: Function) => {
+    const dirPath = path.join(__dirname, '../../uploads');
+    if (fs.existsSync(dirPath)) {
+        const totalSize = calculateDirectorySize(dirPath);
+        const maxSize = 100 * 1024 * 1024 * 1024; // 100 GB in bytes
+
+        if (!req.files || !Array.isArray(req.files)) {
+            return res.status(400).send({
+                status: 'error',
+                message: 'No files uploaded or invalid file format.'
+            });
+        }
+
+        const uploadSize = req.files.reduce((sum: number, file: Express.Multer.File) => sum + file.size, 0);
+
+        if (totalSize + uploadSize > maxSize) {
+            return res.status(400).send({
+                status: 'error',
+                message: 'Not enough space in the upload directory. Uploads cannot exceed 100 GB.'
+            });
+        } else {
+            next();
+        }
+    } else {
+        res.status(404).send({
+            status: 'error',
+            message: 'Upload directory not found.'
+        });
+    }
+};
+
+export const checkDirectorySize = (req: Request, res: Response) => {
+    const dirPath = path.join(__dirname, '../../uploads', req.params.dir);
+    if (fs.existsSync(dirPath)) {
+        const totalSize = calculateDirectorySize(dirPath);
+        const maxSize = 100 * 1024 * 1024 * 1024; // 100 GB in bytes
+
+        if (totalSize > maxSize) {
+            return res.status(400).send({
+                status: 'error',
+                message: 'Directory size exceeds 100 GB',
+                totalSize: formatSizeUnits(totalSize)
+            });
+        } else {
+            return res.status(200).send({
+                status: 'success',
+                message: 'Directory size is within the limit',
+                totalSize: formatSizeUnits(totalSize)
+            });
+        }
+    } else {
+        return res.status(404).send({
+            status: 'error',
+            message: 'Directory not found, it may have been deleted or expired.'
+        });
     }
 };

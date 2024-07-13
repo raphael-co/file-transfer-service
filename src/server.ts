@@ -9,7 +9,7 @@ const app = express();
 const port = 3000;
 
 const corsOptions = {
-    origin: ['http://localhost:3000', 'http://localhost:3001','http://localhost', 'http://192.168.1.39'],
+    origin: ['http://localhost:3000', 'http://localhost:3001','http://localhost', 'http://192.168.1.39','https://transfer-express.netgraph.fr'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization']

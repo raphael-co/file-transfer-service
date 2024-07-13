@@ -30,7 +30,7 @@ export const completeUpload = async (req: Request, res: Response) => {
     }
 
     try {
-        const uploadDirUrl = `${req.protocol}://${req.get('host')}/api/files/download/${uploadDir}`;
+        const uploadDirUrl = `${req.protocol}://${req.get('host')}/file/${uploadDir}`;
         const emailAddressArray = emailAddresses.split(',');
 
         await sendDownloadLinkEmail(emailAddressArray, uploadDirUrl);
@@ -77,7 +77,7 @@ export const uploadDirectory = async (req: Request, res: Response) => {
             return res.status(400).send({ status: 'error', message: 'Some files are infected.' });
         }
 
-        const uploadDirUrl = `${req.protocol}://${req.get('host')}/api/files/download/${req.uploadDir}`;
+        const uploadDirUrl = `${req.protocol}://${req.get('host')}/file/${req.uploadDir}`;
 
         await connection.query('INSERT INTO uploads (upload_dir, num_files) VALUES (?, ?)', [
             req.uploadDir,
@@ -117,7 +117,7 @@ export const uploadFiles = async (req: Request, res: Response) => {
             return res.status(400).send({ status: 'error', message: 'Some files are infected.' });
         }
 
-        const uploadDirUrl = `${req.protocol}://${req.get('host')}/api/files/download/${req.uploadDir}`;
+        const uploadDirUrl = `${req.protocol}://${req.get('host')}/file/${req.uploadDir}`;
 
         await connection.query('INSERT INTO uploads (upload_dir, num_files) VALUES (?, ?)', [
             req.uploadDir,
